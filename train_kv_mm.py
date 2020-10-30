@@ -10,7 +10,6 @@ import torch
 import torch.autograd as autograd
 from torch.autograd import Variable
 import torch.nn as nn
-from torch.legacy.nn import CosineEmbeddingCriterion
 import torch.nn.functional as F
 import torch.optim as optim
 import numpy as np

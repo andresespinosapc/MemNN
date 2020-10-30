@@ -7,7 +7,6 @@ import pdb
 import torch
 import torch.autograd as autograd
 import torch.nn as nn
-from torch.legacy.nn import CosineEmbeddingCriterion
 import torch.nn.functional as F
 import torch.optim as optim
 
@@ -26,8 +25,6 @@ dev_sim_t = torch.LongTensor(dev_sim[:N])
 
 model = MLP(config)
 optimizer = optim.SGD(model.parameters(), lr=config.lr)
-#optimizer = nn.StochasticGradient(mlp, criterion)
-#criterion = CosineEmbeddingCriterion(config.margin)
 
 #pdb.set_trace()
 

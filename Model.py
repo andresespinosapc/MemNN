@@ -6,8 +6,6 @@ import torch.nn.functional as F
 import torch.optim as optim
 from torchvision import datasets, transforms
 from torch.autograd import Variable
-from torch.legacy.nn import CosineEmbeddingCriterion
-from torch.legacy.nn import Sum
 import pdb
 
 class MLP(nn.Module):
@@ -15,7 +13,6 @@ class MLP(nn.Module):
         super(MLP, self).__init__()
         self.embed = nn.Embedding(config.n_embed, config.d_embed)
         self.cosine = nn.CosineEmbeddingLoss()
-        #self.mean = Sum(0,True)
 
     def forward(self, x1, x2, y):
         #pdb.set_trace()

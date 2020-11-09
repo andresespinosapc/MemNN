@@ -1,6 +1,6 @@
 #!/usr/bin/python
 import operator
-import cPickle
+import pickle
 import pdb
 
 dict_file = "../WikiMovies/data/torch/dict.txt"
@@ -17,14 +17,14 @@ def gen_dict():
             word2id[w.lower()] = len(word2id)
     sort_l = sorted(word2id.items(), key=operator.itemgetter(1))
     id2word = [x[0] for x in sort_l]
-    print "Voc len,", len(word2id)
-    with open(pkl_file, 'w') as f:
-        cPickle.dump((word2id, id2word), f)
+    print("Voc len,", len(word2id))
+    with open(pkl_file, 'wb') as f:
+        pickle.dump((word2id, id2word), f)
     
 def load_dict():
-    with open(pkl_file) as f:
-        word2id, id2word = cPickle.load(f)
-    print "Loading dict:", len(id2word)
+    with open(pkl_file, 'rb') as f:
+        word2id, id2word = pickle.load(f)
+    print("Loading dict:", len(id2word))
     return word2id, id2word
 
 def toSent(sent):

@@ -361,14 +361,14 @@ class KVMemoryReader(nn.Module):
 
         for _ in range(self.config.hop):
             sent_dot = torch.mm(q_state, torch.transpose(w1_state, 0, 1))
-            sent_att = F.softmax(sent_dot)
+            sent_att = F.softmax(sent_dot, dim=-1)
 
             a_dot = torch.mm(sent_att, w2_state)
             a_dot = self.H(a_dot)
             q_state = torch.add(a_dot, q_state)
 
         f_feat = torch.mm(q_state, torch.transpose(embed_c, 0, 1))
-        score = F.log_softmax(f_feat)
+        score = F.log_softmax(f_feat, dim=-1)
         return score
 
     def predict(self, q, key, value, cand):
@@ -378,7 +378,7 @@ class KVMemoryReader(nn.Module):
 
     def load_embed(self, filename):
         embed_t = None
-        with open(filename) as f:
+        with open(filename, 'rb') as f:
             embed_t = torch.load(f)
         self.embed_A.weight = embed_t
         self.embed_B.weight = embed_t

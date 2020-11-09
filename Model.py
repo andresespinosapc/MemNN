@@ -29,12 +29,12 @@ class MLP(nn.Module):
 
     def save(self, filename):
         tmp = [x for x in self.parameters()]
-        with open(filename, "w") as f:
+        with open(filename, "wb") as f:
             torch.save(tmp[0], f) 
 
     def load(self, filename):
         embed_t = None
-        with open(filename) as f:
+        with open(filename, "rb") as f:
             embed_t = torch.load(f)
         self.embed.weight = embed_t
 

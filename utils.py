@@ -1,5 +1,5 @@
 import numpy as np
-import cPickle
+import pickle
 import torch
 from config import config
 import os
@@ -9,7 +9,7 @@ def batch_iter(data, batch_size, num_epochs, shuffle=True):
     data = torch.Tensor(data)
     data_size = len(data)
     num_batches_per_epoch = int(len(data)/batch_size) + 1
-    print "{} batches expected".format(num_batches_per_epoch * num_epochs)
+    # print("{} batches expected".format(num_batches_per_epoch * num_epochs))
     for epoch in range(num_epochs):
         # Shuffle the data at each epoch
         if shuffle:
@@ -26,7 +26,7 @@ def batch_sort_iter(data, batch_size, num_epochs, padding=False, sort=True):
     #variable length but sorted
     data_size = len(data)
     num_batches_per_epoch = int(len(data)/batch_size) + 1
-    print "{} batches expected".format(num_batches_per_epoch * num_epochs)
+    # print("{} batches expected".format(num_batches_per_epoch * num_epochs))
     for epoch in range(num_epochs):
         # Shuffle the data at each epoch
         for batch_num in range(num_batches_per_epoch):
@@ -56,14 +56,13 @@ def padding_list(l, length, pad=2):
 def dump_to_file(obj, filename):
     path = os.path.dirname(filename)
     if not os.path.exists(path):
-        print "Warning: file path not exisits, writed in the cur dir"
+        print("Warning: file path not exisits, writed in the cur dir")
         filename = "./" + os.path.basename(filename)
-    with open(filename, "w") as f:
-        print "Dumping to:", filename
-        cPickle.dump(obj, f)
+    with open(filename, "wb") as f:
+        print("Dumping to:", filename)
+        pickle.dump(obj, f)
 
 def load_from_file(filename):
-    print "Loading: ", filename
-    with open(filename) as f:
-        return cPickle.load(f)
-
+    print("Loading: ", filename)
+    with open(filename, "rb") as f:
+        return pickle.load(f)

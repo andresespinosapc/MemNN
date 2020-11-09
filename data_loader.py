@@ -25,15 +25,15 @@ wiki_hash_ = torchfile.load(wiki_file + ".hash.facts_hash_va")
 #pdb.set_trace()
 
 def get(x, i):
-    start = int(x["idx"][i]) - 1
-    length = int(x["len"][i])
-    ret = x["data"][start : start + length]
+    start = int(x[b"idx"][i]) - 1
+    length = int(x[b"len"][i])
+    ret = x[b"data"][start : start + length]
     return [ int(x) -1 for x in ret]
 
 def extract(x,y):
     q = []
     a = []
-    l = int(x["cnt"][0])
+    l = int(x[b"cnt"][0])
     for i in range(l):
         q_ = get(x,i)
         a_ = get(y,i)

@@ -5,13 +5,16 @@ from utils import *
 from data_loader import *
 import pdb
 from Model import MLP
+from tqdm import tqdm
 
 # dump path
 train_file_path =  "./pkl/reader/300/train_pair.pkl"
 dev_file_path =  "./pkl/reader/300/dev_pair.pkl"
 test_file_path =  "./pkl/reader/300/test_pair.pkl"
 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model = MLP(config)
+model = model.to(device)
 model.load(config.pre_embed_file)
 
 title_dict = load_from_file(config.title_dict)
@@ -21,9 +24,10 @@ def predict_sim(x,y):
     x = torch.LongTensor([x])
     y = torch.LongTensor([y])
     sim = torch.LongTensor([1])
+    x, y, sim = x.to(device), y.to(device), sim.to(device)
     #pdb.set_trace()
     loss = model.forward(x,y,sim)
-    return loss.data.numpy()[0]
+    return loss.item()
 
 def extract_ans_pair(golds, wiki_ans):
     s1 = set(golds)
@@ -36,7 +40,8 @@ def make_pairs(x,y,test=False):
     eos = 1 # index
     unk = 2
     ret_pair = []
-    for q, a in zip(x,y):
+    pbar = tqdm(zip(x, y), total=len(x))
+    for q, a in pbar:
         cand_facts = []
         for token in q:
             if token >= len(wiki_hash): continue
@@ -144,12 +149,15 @@ def evaluate(data):
     return cnt1 / len(a), cnt2 / len(a), cnt3 / len(a)
 
 if __name__ == "__main__":
+    print('Making train pairs')
     train_pairs = make_pairs(train_q, train_a)
     dump_to_file(train_pairs, train_file_path)
+    print('Making dev pairs')
     dev_pairs = make_pairs(dev_q, dev_a)
     dump_to_file(dev_pairs, dev_file_path)
+    print('Making test pairs')
     test_pairs = make_pairs(test_q, test_a, test=True)
     dump_to_file(test_pairs, test_file_path)
     
     #test_pairs = load_from_file(test_file_path)
-    print evaluate(test_pairs)
+    print(evaluate(test_pairs))

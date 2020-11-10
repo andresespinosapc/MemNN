@@ -1,5 +1,7 @@
 #!/usr/bin/python
 from __future__ import division
+import os
+import sys
 from Model import KVMemoryReader
 from config import config
 import operator
@@ -11,6 +13,8 @@ from torch.autograd import Variable
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
+from torch.utils.data import DataLoader
+from torch.nn.utils.rnn import pad_sequence
 import numpy as np
 from tqdm import tqdm
 
@@ -80,35 +84,59 @@ def transKV(sents, pos):
         #print(toSent(k_),toSent([v_]))
     return np.array(ret_k), np.array(ret_v)
 
+def pad_batch(batch):
+    questions, q_lengths, keys, key_num_lengths, key_word_lengths, values, cands, cand_lengths, answers = zip(*batch)
+    questions = pad_sequence(questions, batch_first=True)
+    q_lengths = torch.tensor(q_lengths)
+    keys = pad_sequence(keys, batch_first=True)
+    key_num_lengths = torch.tensor(key_num_lengths)
+    key_word_lengths = torch.tensor(key_word_lengths)
+    values = pad_sequence(values, batch_first=True)
+    cands = pad_sequence(cands, batch_first=True)
+    cand_lengths = torch.tensor(cand_lengths)
+    answers = torch.tensor(answers)
+
+    return questions, q_lengths, keys, key_num_lengths, key_word_lengths, values, cands, cand_lengths, answers
+
+def get_data_lengths(questions, keys, candidates):
+    # Returns: question_word_lengths, key_num_lengths, key_word_lengths, cand_lengths
+    return [
+        list(map(lambda q: q.shape[0], questions)),
+        list(map(lambda k: k.shape[0], keys)),
+        list(map(lambda k: k.shape[1], keys)),
+        list(map(lambda c: c.shape[0], candidates))
+    ]
+
+def save_model(epoch):
+    torch.save({
+        'state_dict': model.state_dict(),
+        'optimizer': optimizer.state_dict()
+    }, os.path.join(config.reader_model_dir, 'd{}_{}.torch'.format(config.d_embed, epoch)))
+
 def train(epoch):
-    n_examples = len(train_q)
-    pbar1 = tqdm(list(range(epoch)))
-    for e_ in pbar1:
+    for e_ in list(range(epoch)):
         if (e_ + 1) % 10 == 0:
             adjust_learning_rate(optimizer, e_)
         cnt = 0
-        loss = Variable(torch.Tensor([0]))
-        pbar2 = tqdm(zip(train_q, train_key, train_value, train_cand, train_a), total=n_examples)
-        train_loss, accuracy = -1, -1
-        for i_q, i_k, i_v, i_cand, i_a in pbar2:
-            i_q, i_k, i_v, i_cand, i_a = i_q.to(device), i_k.to(device), i_v.to(device), i_cand.to(device), i_a.to(device)
+        pbar = tqdm(train_dataloader)
+        train_loss = 0
+        for question, q_length, key, key_num_length, key_word_length, value, candidate, cand_length, answer in pbar:
             cnt += 1
-            i_q = i_q.unsqueeze(0) # add dimension
-            probs = model.forward(i_q, i_k, i_v,i_cand)
-            i_a = Variable(i_a)
-            curr_loss = loss_function(probs, i_a)
-            loss = torch.add(loss, torch.div(curr_loss, config.batch_size).to(device))
-            
-            # naive batch implemetation, the lr is divided by batch size
-            if cnt % config.batch_size == 0:
-                train_loss = loss.data.sum().item()
-                loss.backward()
-                optimizer.step()
-                loss = Variable(torch.Tensor([0]))
-                model.zero_grad()
-            if cnt % config.valid_every == 0:
-                accuracy = eval()
-            pbar2.set_description('Train loss: {:.3f}. Acc: {:.3f}'.format(train_loss, accuracy))
+            question, q_length, key = question.to(device), q_length.to(device), key.to(device)
+            key_num_length, key_word_length, value = key_num_length.to(device), key_word_length.to(device), value.to(device)
+            candidate, cand_length, answer = candidate.to(device), cand_length.to(device), answer.to(device)
+            cand_score = model(question, q_length, key, key_num_length,
+                          key_word_length, value, candidate, cand_length)
+            loss = loss_function(cand_score, answer)
+            train_loss += loss.item()
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+            pbar.set_description('Epoch: {}. Train loss: {:.3f}'.format(e_ + 1, train_loss / cnt))
+        accuracy = eval()
+        print('Valid. acc.: {:.3f}'.format(accuracy))
+        if (e_ + 1) % config.save_every == 0:
+            save_model(e_ + 1)
 
 def adjust_learning_rate(optimizer, epoch):
     lr = config.lr / (2 ** (epoch // 10))
@@ -117,19 +145,20 @@ def adjust_learning_rate(optimizer, epoch):
         param_group['lr'] = lr
 
 def eval():
-    cnt = 0
-    for i_q, i_k, i_v, i_cand, i_a in zip(dev_q, dev_key, dev_value, dev_cand, dev_a):
-        i_q, i_k, i_v, i_cand, i_a = i_q.to(device), i_k.to(device), i_v.to(device), i_cand.to(device), i_a.to(device)
-        i_q = i_q.unsqueeze(0) # add dimension
-        try:
-            ind = model.predict(i_q, i_k, i_v, i_cand)
-        except:
-            continue
-        if ind == i_a[0]:
-            cnt += 1
-    return cnt / len(dev_q)
+    correct = 0
+    total = 0
+    pbar = tqdm(dev_dataloader)
+    for question, q_length, key, key_num_length, key_word_length, value, candidate, cand_length, answer in pbar:
+        question, q_length, key = question.to(device), q_length.to(device), key.to(device)
+        key_num_length, key_word_length, value = key_num_length.to(device), key_word_length.to(device), value.to(device)
+        candidate, cand_length, answer = candidate.to(device), cand_length.to(device), answer.to(device)
+        index = model.predict(question, q_length, key, key_num_length,
+                              key_word_length, value, candidate, cand_length)
+        total += question.shape[0]
+        correct += (index == answer).sum()
+    return float(correct) / total
 
-model = KVMemoryReader(config)
+model = KVMemoryReader(config.d_embed, config.n_embed, config.hop)
 model = model.to(device)
 model.load_embed(config.pre_embed_file)
 # here lr is divide by batch size since loss is accumulated 
@@ -139,7 +168,31 @@ print("Training setting: lr {0}, batch size {1}".format(config.lr, config.batch_
 loss_function = nn.NLLLoss()
 
 print("{} batch expected".format(len(train_q) * config.epoch / config.batch_size))
-train_q, train_key, train_value, train_cand,train_a = modify(train_q, train_w, train_e_p, train_a)
+train_q, train_key, train_value, train_cand, train_a = modify(train_q, train_w, train_e_p, train_a)
 dev_q, dev_key, dev_value, dev_cand, dev_a = modify(dev_q, dev_w, dev_e_p, dev_a)
+
+train_q_word_lengths, train_key_num_lengths, train_key_word_lengths, train_cand_lengths = get_data_lengths(
+    train_q, train_key, train_cand
+)
+dev_q_word_lengths, dev_key_num_lengths, dev_key_word_lengths, dev_cand_lengths = get_data_lengths(
+    dev_q, dev_key, dev_cand    
+)
+
+zipped_data = list(zip(
+    train_q, train_q_word_lengths, train_key, train_key_num_lengths, train_key_word_lengths,
+    train_value, train_cand, train_cand_lengths, train_a
+))
+train_dataloader = DataLoader(
+    zipped_data, batch_size=config.batch_size, shuffle=False, num_workers=config.num_workers, collate_fn=pad_batch
+)
+
+zipped_data = list(zip(
+    dev_q, dev_q_word_lengths, dev_key, dev_key_num_lengths, dev_key_word_lengths,
+    dev_value, dev_cand, dev_cand_lengths, dev_a
+))
+dev_dataloader = DataLoader(
+    zipped_data, batch_size=config.batch_size, shuffle=False, num_workers=config.num_workers, collate_fn=pad_batch
+)
+
 train(config.epoch)
-dump_to_file(model, config.reader_model)
+save_model(config.epoch)

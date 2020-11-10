@@ -336,50 +336,82 @@ class PairReader(nn.Module):
         self.embed.weight = embed_t
 
 class KVMemoryReader(nn.Module):
-    def __init__(self, config):
-        super(KVMemoryReader, self).__init__()
-        self.config = config
-        self.embed_A = nn.Embedding(config.n_embed, config.d_embed)
-        self.embed_B = nn.Embedding(config.n_embed, config.d_embed)
-        self.embed_C = nn.Embedding(config.n_embed, config.d_embed)
-        self.H = nn.Linear(config.d_embed, config.d_embed)
+    def __init__(self, d_embed, n_embed, n_hops):
+        super().__init__()
+        self.n_hops = n_hops
+        self.d_embed = d_embed
+        self.key_embed = nn.Embedding(n_embed, d_embed)
+        self.question_embed = nn.Embedding(n_embed, d_embed)
+        self.value_embed = nn.Embedding(n_embed, d_embed)
+        self.hop_linear = nn.Linear(d_embed, d_embed)
 
-    def forward(self, qu, key, value, cand):
-        qu = Variable(qu)
-        key = Variable(key)
-        value = Variable(value)
-        cand = Variable(cand)
-        embed_q = self.embed_B(qu)
-        embed_w1 = self.embed_A(key)
-        embed_w2 = self.embed_C(value)
-        embed_c = self.embed_C(cand)
+    @property
+    def device(self):
+        return next(self.parameters()).device
 
-        #pdb.set_trace()
-        q_state = torch.sum(embed_q, 1).squeeze(1)
-        w1_state = torch.sum(embed_w1, 1).squeeze(1)
-        w2_state = embed_w2
+    def gen_mask(self, max_len, lengths):
+        return (torch.arange(max_len).expand(len(lengths), max_len).to(self.device) < lengths.unsqueeze(1)).float()
+        
+    def forward(self, question, q_length, key, key_num_length, key_word_length, value, candidate, cand_length):
+        batch_size, max_q_len = question.shape
+        max_n_keys, max_k_len = key.shape[1], key.shape[2]
+        max_n_cands = candidate.shape[1]
 
-        for _ in range(self.config.hop):
-            sent_dot = torch.mm(q_state, torch.transpose(w1_state, 0, 1))
-            sent_att = F.softmax(sent_dot, dim=-1)
+        embed_q = self.question_embed(question)
+        embed_k = self.key_embed(key)
+        # batch_size x max_n_keys x d_embed
+        embed_v = self.value_embed(value)
+        # batch_size x max_n_cands x d_embed
+        embed_c = self.value_embed(candidate)
 
-            a_dot = torch.mm(sent_att, w2_state)
-            a_dot = self.H(a_dot)
-            q_state = torch.add(a_dot, q_state)
+        q_word_mask = self.gen_mask(max_q_len, q_length)
+        # batch_size x 1 x d_embed
+        q_state = torch.bmm(q_word_mask.unsqueeze(1), embed_q)
 
-        f_feat = torch.mm(q_state, torch.transpose(embed_c, 0, 1))
-        score = F.log_softmax(f_feat, dim=-1)
-        return score
+        k_word_mask = self.gen_mask(max_k_len, key_word_length)
+        # batch_size x max_n_keys x d_embed
+        key_feat = torch.bmm(
+            k_word_mask.unsqueeze(1),
+            embed_k.transpose(1, 2).reshape(batch_size, max_k_len, -1)
+        ).view(batch_size, max_n_keys, self.d_embed)
+        
+        # batch_size x 1 x max_n_keys
+        k_num_mask = self.gen_mask(max_n_keys, key_num_length).unsqueeze(1)
+        c_num_mask = self.gen_mask(max_n_cands, cand_length).unsqueeze(1)
 
-    def predict(self, q, key, value, cand):
-        score = self.forward(q, key, value, cand)
-        _, index = torch.max(score.squeeze(0), 0)
-        return index.data.numpy()[0]
+        for _ in range(self.n_hops):
+            # batch_size x 1 x max_n_keys
+            key_similarity = torch.bmm(q_state, key_feat.transpose(1, 2))
+            # Convert padding values to -infinity to get them to zero after Softmax
+            key_similarity = key_similarity.masked_fill(k_num_mask == 0, float('-inf'))
+            attention = F.softmax(key_similarity, dim=-1)
+            # batch_size x 1 x d_embed
+            pondered_value = torch.bmm(attention, embed_v)
+            pondered_value = self.hop_linear(pondered_value)
+            q_state = torch.add(pondered_value, q_state)
+
+        # batch_size x 1 x max_n_cands
+        cand_similarity = torch.bmm(q_state, embed_c.transpose(1, 2))
+        cand_similarity = cand_similarity.masked_fill(c_num_mask == 0, float('-inf'))
+        cand_score = F.log_softmax(cand_similarity, dim=-1)
+        cand_score = cand_score.masked_fill(c_num_mask == 0, 0)
+
+        return cand_score.squeeze(1)
+
+    def predict(self, question, q_length, key, key_num_length, key_word_length, value, candidate, cand_length):
+        cand_score = self.forward(question, q_length, key, key_num_length,
+                                  key_word_length, value, candidate, cand_length)
+        max_n_cands = candidate.shape[1]
+        c_num_mask = self.gen_mask(max_n_cands, cand_length)
+        cand_score = cand_score.masked_fill(c_num_mask == 0, float('-inf'))
+        _, index = cand_score.max(-1)
+
+        return index
 
     def load_embed(self, filename):
         embed_t = None
         with open(filename, 'rb') as f:
-            embed_t = torch.load(f)
-        self.embed_A.weight = embed_t
-        self.embed_B.weight = embed_t
-        self.embed_C.weight = embed_t
+            embed_t = torch.load(f, map_location=self.device)
+        self.key_embed.weight = embed_t
+        self.question_embed.weight = embed_t
+        self.value_embed.weight = embed_t

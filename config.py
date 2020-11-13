@@ -16,6 +16,7 @@ class Config():
         self.batch_size = 128
         self.epoch = 100
         self.lr = 0.005
+        self.use_lr_decay = False
         self.l2 = 0.00001
         self.save_every = 50
 

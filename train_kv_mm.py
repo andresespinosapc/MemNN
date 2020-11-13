@@ -121,7 +121,7 @@ def save_model(epoch):
 
 def train(epoch):
     for e_ in list(range(epoch)):
-        if (e_ + 1) % 10 == 0:
+        if config.use_lr_decay and (e_ + 1) % 10 == 0:
             adjust_learning_rate(optimizer, e_)
         cnt = 0
         pbar = tqdm(train_dataloader)
@@ -168,7 +168,7 @@ model = KVMemoryReader(config.d_embed, config.n_embed, config.hop)
 model = model.to(device)
 model.load_embed(config.pre_embed_file)
 # here lr is divide by batch size since loss is accumulated 
-optimizer = optim.SGD(model.parameters(), lr=config.lr)
+optimizer = optim.Adam(model.parameters(), lr=config.lr)
 print("Training setting: lr {0}, batch size {1}".format(config.lr, config.batch_size))
 
 loss_function = nn.NLLLoss()

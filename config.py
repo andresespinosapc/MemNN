@@ -10,6 +10,7 @@ class Config():
 
         self.ir_size = 1000
         self.filter_size = 100
+        self.n_neg_samples = 1000
 
         self.num_workers = 4
         self.batch_size = 128

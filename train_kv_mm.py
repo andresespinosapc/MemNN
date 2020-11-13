@@ -25,14 +25,16 @@ dev_q, dev_w, dev_e_p, dev_a = load_from_file("./pkl/reader/{}/dev_pair.pkl".for
 #train_q, train_w, train_e_p, train_a = load_from_file("./pkl/toy/reader/train_pair.pkl")
 #dev_q, dev_w, dev_e_p, dev_a = load_from_file("./pkl/toy/reader/dev_pair.pkl")
 
-def modify(q, wiki, pos, ans):
+def modify(q, wiki, pos, ans, neg_sampling=False):
     tL = torch.LongTensor
     ret_q = []
     ret_key = []
     ret_value = []
     ret_cand = []
     ret_a = []
-    for qu,w,p,a_ in zip(q,wiki,pos,ans):
+    possible_ans = np.unique(ans)
+    pbar = tqdm(zip(q,wiki,pos,ans), total=len(q))
+    for qu,w,p,a_ in pbar:
         # encoding the candidate
         can_dict = {}
         qu = qu.numpy()
@@ -53,6 +55,10 @@ def modify(q, wiki, pos, ans):
         else:
             sort_l = sorted(can_dict.items(), key=operator.itemgetter(1))
             cand_l = [x[0] for x in sort_l]
+            if neg_sampling:
+                possible_neg_ans = possible_ans[~np.isin(possible_ans, cand_l)]
+                neg_ans = np.random.choice(possible_neg_ans, config.n_neg_samples)
+                cand_l = cand_l + neg_ans.tolist()
 
             # split into key value format
             #pdb.set_trace()
@@ -168,7 +174,8 @@ print("Training setting: lr {0}, batch size {1}".format(config.lr, config.batch_
 loss_function = nn.NLLLoss()
 
 print("{} batch expected".format(len(train_q) * config.epoch / config.batch_size))
-train_q, train_key, train_value, train_cand, train_a = modify(train_q, train_w, train_e_p, train_a)
+print('Getting data ready...')
+train_q, train_key, train_value, train_cand, train_a = modify(train_q, train_w, train_e_p, train_a, neg_sampling=True)
 dev_q, dev_key, dev_value, dev_cand, dev_a = modify(dev_q, dev_w, dev_e_p, dev_a)
 
 train_q_word_lengths, train_key_num_lengths, train_key_word_lengths, train_cand_lengths = get_data_lengths(

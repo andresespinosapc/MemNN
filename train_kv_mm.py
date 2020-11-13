@@ -166,7 +166,6 @@ def eval():
 
 model = KVMemoryReader(config.d_embed, config.n_embed, config.hop)
 model = model.to(device)
-model.load_embed(config.pre_embed_file)
 # here lr is divide by batch size since loss is accumulated 
 optimizer = optim.Adam(model.parameters(), lr=config.lr)
 print("Training setting: lr {0}, batch size {1}".format(config.lr, config.batch_size))

@@ -22,6 +22,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 train_q, train_w, train_e_p, train_a = load_from_file("./pkl/reader/{}/train_pair.pkl".format(config.d_embed))
 dev_q, dev_w, dev_e_p, dev_a = load_from_file("./pkl/reader/{}/dev_pair.pkl".format(config.d_embed))
+test_q, test_w, test_e_p, test_a = load_from_file("./pkl/reader/{}/test_pair.pkl".format(config.d_embed))
 #train_q, train_w, train_e_p, train_a = load_from_file("./pkl/toy/reader/train_pair.pkl")
 #dev_q, dev_w, dev_e_p, dev_a = load_from_file("./pkl/toy/reader/dev_pair.pkl")
 
@@ -139,8 +140,9 @@ def train(epoch):
             loss.backward()
             optimizer.step()
             pbar.set_description('Epoch: {}. Train loss: {:.3f}'.format(e_ + 1, train_loss / cnt))
-        accuracy = eval()
-        print('Valid. acc.: {:.3f}'.format(accuracy))
+        dev_accuracy = eval()
+        test_accuracy = eval('test')
+        print('Valid. acc.: {:.3f}. Test acc.: {:.3f}'.format(dev_accuracy, test_accuracy))
         if (e_ + 1) % config.save_every == 0:
             save_model(e_ + 1)
 
@@ -150,10 +152,13 @@ def adjust_learning_rate(optimizer, epoch):
     for param_group in optimizer.param_groups:
         param_group['lr'] = lr
 
-def eval():
+def eval(dataset='dev'):
     correct = 0
     total = 0
-    pbar = tqdm(dev_dataloader)
+    if dataset == 'dev':
+        pbar = tqdm(dev_dataloader)
+    elif dataset == 'test':
+        pbar = tqdm(test_dataloader)
     for question, q_length, key, key_num_length, key_word_length, value, candidate, cand_length, answer in pbar:
         question, q_length, key = question.to(device), q_length.to(device), key.to(device)
         key_num_length, key_word_length, value = key_num_length.to(device), key_word_length.to(device), value.to(device)
@@ -176,12 +181,16 @@ print("{} batch expected".format(len(train_q) * config.epoch / config.batch_size
 print('Getting data ready...')
 train_q, train_key, train_value, train_cand, train_a = modify(train_q, train_w, train_e_p, train_a, neg_sampling=True)
 dev_q, dev_key, dev_value, dev_cand, dev_a = modify(dev_q, dev_w, dev_e_p, dev_a)
+test_q, test_key, test_value, test_cand, test_a = modify(test_q, test_w, test_e_p, list(map(lambda x: torch.tensor(x[:1]), test_a)))
 
 train_q_word_lengths, train_key_num_lengths, train_key_word_lengths, train_cand_lengths = get_data_lengths(
     train_q, train_key, train_cand
 )
 dev_q_word_lengths, dev_key_num_lengths, dev_key_word_lengths, dev_cand_lengths = get_data_lengths(
     dev_q, dev_key, dev_cand    
+)
+test_q_word_lengths, test_key_num_lengths, test_key_word_lengths, test_cand_lengths = get_data_lengths(
+    test_q, test_key, test_cand
 )
 
 zipped_data = list(zip(
@@ -197,6 +206,14 @@ zipped_data = list(zip(
     dev_value, dev_cand, dev_cand_lengths, dev_a
 ))
 dev_dataloader = DataLoader(
+    zipped_data, batch_size=config.batch_size, shuffle=False, num_workers=config.num_workers, collate_fn=pad_batch
+)
+
+zipped_data = list(zip(
+    test_q, test_q_word_lengths, test_key, test_key_num_lengths, test_key_word_lengths,
+    test_value, test_cand, test_cand_lengths, test_a
+))
+test_dataloader = DataLoader(
     zipped_data, batch_size=config.batch_size, shuffle=False, num_workers=config.num_workers, collate_fn=pad_batch
 )
 

@@ -340,9 +340,10 @@ class KVMemoryReader(nn.Module):
         super().__init__()
         self.n_hops = n_hops
         self.d_embed = d_embed
-        self.key_embed = nn.Embedding(n_embed, d_embed)
         self.question_embed = nn.Embedding(n_embed, d_embed)
-        self.value_embed = nn.Embedding(n_embed, d_embed)
+        self.key_embed = self.question_embed
+        self.value_embed = self.question_embed
+        self.cand_embed = self.question_embed
         self.hop_linear = nn.Linear(d_embed, d_embed)
 
     @property
@@ -362,7 +363,7 @@ class KVMemoryReader(nn.Module):
         # batch_size x max_n_keys x d_embed
         embed_v = self.value_embed(value)
         # batch_size x max_n_cands x d_embed
-        embed_c = self.value_embed(candidate)
+        embed_c = self.cand_embed(candidate)
 
         q_word_mask = self.gen_mask(max_q_len, q_length)
         # batch_size x 1 x d_embed

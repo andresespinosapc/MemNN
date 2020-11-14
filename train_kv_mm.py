@@ -198,7 +198,7 @@ zipped_data = list(zip(
     train_value, train_cand, train_cand_lengths, train_a
 ))
 train_dataloader = DataLoader(
-    zipped_data, batch_size=config.batch_size, shuffle=False, num_workers=config.num_workers, collate_fn=pad_batch
+    zipped_data, batch_size=config.batch_size, shuffle=True, num_workers=config.num_workers, collate_fn=pad_batch
 )
 
 zipped_data = list(zip(

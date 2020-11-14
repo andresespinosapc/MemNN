@@ -368,6 +368,7 @@ class KVMemoryReader(nn.Module):
         q_word_mask = self.gen_mask(max_q_len, q_length)
         # batch_size x 1 x d_embed
         q_state = torch.bmm(q_word_mask.unsqueeze(1), embed_q)
+        q_state /= q_length.view(batch_size, 1, 1).expand(batch_size, 1, self.d_embed)
 
         k_word_mask = self.gen_mask(max_k_len, key_word_length)
         # batch_size x max_n_keys x d_embed
@@ -375,6 +376,7 @@ class KVMemoryReader(nn.Module):
             k_word_mask.unsqueeze(1),
             embed_k.transpose(1, 2).reshape(batch_size, max_k_len, -1)
         ).view(batch_size, max_n_keys, self.d_embed)
+        key_feat /= key_word_length.view(batch_size, 1, 1).expand(batch_size, max_n_keys, self.d_embed)
         
         # batch_size x 1 x max_n_keys
         k_num_mask = self.gen_mask(max_n_keys, key_num_length).unsqueeze(1)

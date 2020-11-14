@@ -387,8 +387,8 @@ class KVMemoryReader(nn.Module):
             attention = F.softmax(key_similarity, dim=-1)
             # batch_size x 1 x d_embed
             pondered_value = torch.bmm(attention, embed_v)
-            pondered_value = self.hop_linear(pondered_value)
             q_state = torch.add(pondered_value, q_state)
+            q_state = self.hop_linear(q_state)
 
         # batch_size x 1 x max_n_cands
         cand_similarity = torch.bmm(q_state, embed_c.transpose(1, 2))
